@@ -1,70 +1,69 @@
-# OpticsOps
+# opticsops-otlp-agent
 
-Autonomous DevOps & Telemetry Platform — a unified SaaS that deploys infrastructure, silently injects telemetry, and visualizes live traffic on an animated canvas.
+Zero-configuration OpenTelemetry agent for Node.js. Add it to your app — HTTP traffic is automatically traced and linked across services. No tracing code required.
 
-## MVP Roadmap
+## What is this?
 
-| Step | Status | Description |
-|------|--------|-------------|
-| **1. Telemetry Engine** | ✅ Complete | `@opticsops/agent` — zero-config Node.js OTel tracing |
-| 2. Data Ingestion | Planned | ClickHouse + OTLP ingest API |
-| 3. Deployment Orchestrator | Planned | Pulumi Automation API + deploy UI |
-| 4. Live Visualizer | Planned | React Flow + WebSocket traffic animation |
+`@opticsops/agent` wraps your Node.js process at startup, patches `http` / `https`, and:
 
-See [`projectplan.txt`](./projectplan.txt) for the full architecture blueprint.
+- Injects W3C `traceparent` headers on outbound calls
+- Links traces across microservices (same trace ID)
+- Exports full traces only on errors or slow requests (tail sampling)
+- Summarizes healthy traffic as periodic heartbeats (cost control)
 
-## Repository Structure
-
-```
-opticsops/
-├── packages/
-│   └── agent/              # @opticsops/agent — Step 1 telemetry NPM package
-├── examples/
-│   └── two-services/       # Cross-service tracing demo
-└── projectplan.txt         # Master MVP blueprint
-```
-
-## Quick Start
+## Install & run
 
 ```bash
-# Install dependencies and build the agent
-npm install
-npm run build
-
-# Run tests
-npm test
-
-# Try the two-service demo (see examples/two-services/README.md)
+npm install @opticsops/agent
 ```
-
-## Step 1: Telemetry Agent
-
-```ts
-import { init } from '@opticsops/agent';
-
-init({ serviceName: 'my-api' });
-
-// All http/https traffic is now automatically traced.
-```
-
-Full documentation: [`packages/agent/README.md`](./packages/agent/README.md)
-
-### Key Design Decisions
-
-- **Tail-based sampling** — full traces exported only on 4xx/5xx or latency > 500ms
-- **Heartbeat aggregation** — healthy calls summarized every 10s (cost control)
-- **W3C Trace Context** — standard `traceparent` header, no vendor lock-in
-- **Monkey-patching** — zero changes to application code
-
-## Development
 
 ```bash
-npm run build          # Build @opticsops/agent
-npm test               # Run all tests
-npm run test:watch     # Watch mode
-npm run example:two-services  # Start demo (both services)
+OTEL_SERVICE_NAME=orders-api node --import @opticsops/agent/register app.js
 ```
 
-## Requirements
+Or add to `package.json`:
 
+```json
+{
+  "scripts": {
+    "start": "OTEL_SERVICE_NAME=orders-api node --import @opticsops/agent/register app.js"
+  }
+}
+```
+
+## Example output (error)
+
+```
+[opticsops] 🔗 Trace 4f73f40b9f8b99a1… (2 spans)
+  └─ [CLIENT] HTTP GET (span=6fb8952e… status=500)
+  └─ [SERVER] HTTP GET (span=4adcb254… status=502)
+```
+
+Same trace ID, two hops — points you to the service that actually failed.
+
+## Try locally
+
+```bash
+npm install && npm run build
+
+# Terminal 1
+cd examples/two-services && npm run start:b
+
+# Terminal 2
+cd examples/two-services && npm run start:a
+
+# Terminal 3
+curl http://localhost:4000/fail
+```
+
+## Repo layout
+
+```
+packages/agent/          # @opticsops/agent npm package
+examples/two-services/   # demo (service-a → service-b)
+```
+
+## Docs & requirements
+
+- Full agent docs: [`packages/agent/README.md`](./packages/agent/README.md)
 - Node.js >= 18
