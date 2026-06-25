@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SpanKind } from '@opentelemetry/api';
 import type { ReadableSpan, HrTime } from '@opentelemetry/sdk-trace-base';
 import { createTailSamplingProcessor } from '../src/export/otlp-exporter.js';
@@ -13,41 +13,60 @@ const config: ResolvedConfig = {
   enableConsoleLogging: false,
 };
 
+/** Matches FLUSH_DEBOUNCE_MS in tail-sampler.ts */
+const FLUSH_DEBOUNCE_MS = 10;
+
 describe('TailSamplingSpanProcessor', () => {
   let exporter: InMemorySpanExporter;
   let processor: ReturnType<typeof createTailSamplingProcessor>;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     exporter = new InMemorySpanExporter();
     processor = createTailSamplingProcessor(exporter, config);
   });
 
   afterEach(async () => {
     await processor.shutdown();
+    vi.useRealTimers();
   });
 
-  it('drops healthy fast traces', () => {
+  async function flush(): Promise<void> {
+    vi.advanceTimersByTime(FLUSH_DEBOUNCE_MS);
+    await processor.forceFlush();
+  }
+
+  it('drops healthy fast traces', async () => {
     const root = makeSpan({ kind: SpanKind.SERVER, statusCode: 200, durationMs: 50 });
     processor.onEnd(root);
+    await flush();
     expect(exporter.finishedSpans).toHaveLength(0);
   });
 
-  it('exports traces containing a 5xx response', () => {
+  it('exports traces containing a 5xx response', async () => {
     const root = makeSpan({ kind: SpanKind.SERVER, statusCode: 500, durationMs: 30 });
     processor.onEnd(root);
+    await flush();
     expect(exporter.finishedSpans).toHaveLength(1);
     expect(exporter.finishedSpans[0].attributes['http.status_code']).toBe(500);
   });
 
-  it('exports traces exceeding the latency threshold', () => {
+  it('exports traces exceeding the latency threshold', async () => {
     const root = makeSpan({ kind: SpanKind.SERVER, statusCode: 200, durationMs: 750 });
     processor.onEnd(root);
+    await flush();
     expect(exporter.finishedSpans).toHaveLength(1);
   });
 
-  it('exports the full trace batch (root + child) on anomaly', () => {
+  it('exports the full trace batch (root + child) on anomaly', async () => {
     const traceId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-    const root = makeSpan({ kind: SpanKind.SERVER, statusCode: 200, durationMs: 10, traceId, spanId: 'rootspanid00001' });
+    const root = makeSpan({
+      kind: SpanKind.SERVER,
+      statusCode: 200,
+      durationMs: 10,
+      traceId,
+      spanId: 'rootspanid00001',
+    });
     const child = makeSpan({
       kind: SpanKind.CLIENT,
       statusCode: 503,
@@ -59,9 +78,49 @@ describe('TailSamplingSpanProcessor', () => {
 
     processor.onEnd(child);
     processor.onEnd(root);
+    await flush();
 
     expect(exporter.finishedSpans).toHaveLength(2);
     expect(exporter.getTraceIds()).toEqual([traceId]);
+  });
+
+  it('flushes downstream SERVER spans that have a remote parent (service-b leak fix)', async () => {
+    const downstream = makeSpan({
+      kind: SpanKind.SERVER,
+      statusCode: 500,
+      durationMs: 20,
+      parentSpanId: 'remoteparentspan01',
+    });
+
+    processor.onEnd(downstream);
+    await flush();
+
+    expect(exporter.finishedSpans).toHaveLength(1);
+    expect(exporter.finishedSpans[0].attributes['http.status_code']).toBe(500);
+  });
+
+  it('evicts stale buffered traces after TTL (no memory leak)', async () => {
+    const traceId = 'cccccccccccccccccccccccccccccccc';
+    const child = makeSpan({
+      kind: SpanKind.CLIENT,
+      statusCode: 200,
+      durationMs: 10,
+      traceId,
+      parentSpanId: 'someparentspanid',
+    });
+
+    // CLIENT with parent does not schedule flush — simulates a stuck trace.
+    processor.onEnd(child);
+
+    // Advance past MAX_BUFFER_AGE_MS (60s).
+    vi.advanceTimersByTime(61_000);
+
+    // Next onEnd triggers eviction of the stale trace.
+    processor.onEnd(makeSpan({ kind: SpanKind.SERVER, statusCode: 200, durationMs: 5 }));
+    await flush();
+
+    // Stale healthy trace was evicted, not exported.
+    expect(exporter.finishedSpans).toHaveLength(0);
   });
 });
 
