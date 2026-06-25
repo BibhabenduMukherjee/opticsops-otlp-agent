@@ -1,0 +1,16 @@
+{
+  "name": "@opticsops/example-two-services",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start:b": "OTEL_SERVICE_NAME=service-b OPTICSOPS_CONSOLE_LOGGING=true node --import tsx service-b.ts",
+    "start:a": "OTEL_SERVICE_NAME=service-a OPTICSOPS_CONSOLE_LOGGING=true node --import tsx service-a.ts"
+  },
+  "dependencies": {
+    "@opticsops/agent": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}

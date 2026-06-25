@@ -1,0 +1,20 @@
+{
+  "name": "opticsops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autonomous DevOps & Telemetry Platform — Zero-Fail MVP",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=@opticsops/agent",
+    "test": "npm run test --workspace=@opticsops/agent",
+    "test:watch": "npm run test:watch --workspace=@opticsops/agent",
+    "lint": "npm run lint --workspace=@opticsops/agent",
+    "example:two-services": "npm run start --workspace=@opticsops/example-two-services"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
