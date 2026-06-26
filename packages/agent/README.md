@@ -27,12 +27,26 @@ User → your-service-a → your-service-b
 npm install @opticsops/agent
 ```
 
-### Run (recommended)
+### Run — ESM app (recommended)
 
 Preload the agent **before** your app loads:
 
 ```bash
 OTEL_SERVICE_NAME=orders-api node --import @opticsops/agent/register app.js
+```
+
+### Run — CommonJS app
+
+For apps that use `require()` / `"type": "commonjs"`:
+
+```bash
+OTEL_SERVICE_NAME=orders-api node --require @opticsops/agent/register app.js
+```
+
+Or via `NODE_OPTIONS` (useful in Docker / Kubernetes without changing the start command):
+
+```bash
+NODE_OPTIONS="--require @opticsops/agent/register" OTEL_SERVICE_NAME=orders-api node app.js
 ```
 
 ### Or in code (agent must be the first import)

@@ -8,8 +8,8 @@ import type { HeartbeatEdge, ResolvedConfig } from '../types.js';
  * "Service A called Service B 500 times" every N seconds.
  */
 export class HeartbeatAggregator {
-  /** "source→destination" → call count in the current window */
-  private readonly counts = new Map<string, number>();
+  /** source → destination → call count in the current window */
+  private readonly counts = new Map<string, Map<string, number>>();
   private intervalHandle: ReturnType<typeof setInterval> | undefined;
   private windowStartMs = Date.now();
   private readonly onFlush: (edges: HeartbeatEdge[]) => void;
@@ -23,8 +23,12 @@ export class HeartbeatAggregator {
 
   /** Record a successful outbound call from source to destination. */
   record(source: string, destination: string): void {
-    const key = `${source}→${destination}`;
-    this.counts.set(key, (this.counts.get(key) ?? 0) + 1);
+    let destMap = this.counts.get(source);
+    if (!destMap) {
+      destMap = new Map();
+      this.counts.set(source, destMap);
+    }
+    destMap.set(destination, (destMap.get(destination) ?? 0) + 1);
   }
 
   /** Begin periodic flushing. Called once during agent init. */
@@ -60,9 +64,10 @@ export class HeartbeatAggregator {
 
   private toEdges(): HeartbeatEdge[] {
     const edges: HeartbeatEdge[] = [];
-    for (const [key, count] of this.counts) {
-      const [source, destination] = key.split('→');
-      edges.push({ source, destination, count, windowStartMs: this.windowStartMs });
+    for (const [source, destMap] of this.counts) {
+      for (const [destination, count] of destMap) {
+        edges.push({ source, destination, count, windowStartMs: this.windowStartMs });
+      }
     }
     return edges;
   }
