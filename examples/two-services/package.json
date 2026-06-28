@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start:b": "OTEL_SERVICE_NAME=service-b OPTICSOPS_CONSOLE_LOGGING=true node --import tsx service-b.ts",
-    "start:a": "OTEL_SERVICE_NAME=service-a OPTICSOPS_CONSOLE_LOGGING=true node --import tsx service-a.ts"
+    "start:b": "OTEL_SERVICE_NAME=payment-api OPTICSOPS_CONSOLE_LOGGING=true node --env-file=.env --import tsx service-b.ts",
+    "start:a": "OTEL_SERVICE_NAME=orders-api OPTICSOPS_CONSOLE_LOGGING=true node --env-file=.env --import tsx service-a.ts"
   },
   "dependencies": {
     "@opticsops/agent": "*"

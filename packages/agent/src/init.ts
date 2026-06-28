@@ -49,7 +49,15 @@ export function init(config: OpticsOpsConfig): void {
   ensureW3CPropagator();
 
   // 3. Create tracer provider with tail-based sampling pipeline.
-  heartbeat = new HeartbeatAggregator(resolved);
+  const heartbeatUrl = resolved.otlpEndpoint.replace('/v1/traces', '/v1/heartbeat');
+  heartbeat = new HeartbeatAggregator(resolved, (edges) => {
+    // Use global fetch (Node 18+) — bypasses our http monkey-patch intentionally.
+    fetch(heartbeatUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ edges }),
+    }).catch(() => {}); // best-effort, never blocks the app
+  });
   const processors = createSpanProcessors(resolved);
 
   provider = new BasicTracerProvider({
