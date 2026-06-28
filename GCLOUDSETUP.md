@@ -176,6 +176,10 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:opticsops-deployer@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:opticsops-deployer@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/compute.instanceAdmin.v1"
 ```
 
 Download a key file (keep this secret — do not commit to git):
@@ -226,7 +230,205 @@ us-central1-docker.pkg.dev/PROJECT_ID/opticsops/ingest-api:latest
 
 ---
 
-## Step 9: Deploy a test service on Cloud Run
+## Step 9: Create the ClickHouse VM
+
+### Create the VM
+
+```bash
+gcloud compute instances create opticsops-clickhouse \
+  --machine-type=e2-standard-2 \
+  --image-family=ubuntu-2204-lts \
+  --image-project=ubuntu-os-cloud \
+  --boot-disk-size=50GB \
+  --boot-disk-type=pd-ssd \
+  --region=us-central1 \
+  --zone=us-central1-a \
+  --tags=clickhouse-server \
+  --metadata=startup-script='#!/bin/bash
+apt-get update -y
+apt-get install -y ca-certificates curl gnupg
+
+# Install ClickHouse
+curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" | tee /etc/apt/sources.list.d/clickhouse.list
+apt-get update -y
+DEBIAN_FRONTEND=noninteractive apt-get install -y clickhouse-server clickhouse-client
+
+systemctl enable clickhouse-server
+systemctl start clickhouse-server
+'
+```
+
+> This installs ClickHouse automatically on first boot via the startup script. Wait ~2 minutes after creation before connecting.
+
+### Configure ClickHouse to listen on all interfaces
+
+By default ClickHouse only binds to `localhost`. Run this after the VM is up:
+
+```bash
+gcloud compute ssh opticsops-clickhouse --zone=us-central1-a --command="
+sudo tee /etc/clickhouse-server/config.d/listen.xml > /dev/null <<'EOF'
+<clickhouse>
+    <listen_host>0.0.0.0</listen_host>
+</clickhouse>
+EOF
+sudo systemctl restart clickhouse-server
+"
+```
+
+### Get the VM's internal IP
+
+```bash
+gcloud compute instances describe opticsops-clickhouse \
+  --zone=us-central1-a \
+  --format='value(networkInterfaces[0].networkIP)'
+```
+
+Save it:
+
+```bash
+export CH_INTERNAL_IP=10.x.x.x   # replace with actual output
+```
+
+---
+
+## Step 9a: Firewall rules for ClickHouse
+
+ClickHouse uses two ports:
+- `8123` — HTTP interface (what the ingest API will use)
+- `9000` — native TCP (optional, for `clickhouse-client` from your laptop)
+
+### Allow ingest API (Cloud Run) to reach ClickHouse
+
+Cloud Run uses NAT egress — it does not have a fixed IP. The simplest secure approach for MVP is to restrict ClickHouse to **internal VPC traffic only** (no public port exposed):
+
+```bash
+# Allow internal VPC traffic on port 8123 and 9000 (for services inside GCP)
+gcloud compute firewall-rules create allow-clickhouse-internal \
+  --direction=INGRESS \
+  --priority=1000 \
+  --network=default \
+  --action=ALLOW \
+  --rules=tcp:8123,tcp:9000 \
+  --source-ranges=10.0.0.0/8 \
+  --target-tags=clickhouse-server
+```
+
+### Allow your laptop to connect (temporary, for setup only)
+
+```bash
+gcloud compute firewall-rules create allow-clickhouse-dev \
+  --direction=INGRESS \
+  --priority=1000 \
+  --network=default \
+  --action=ALLOW \
+  --rules=tcp:8123,tcp:9000 \
+  --source-ranges=$(curl -s ifconfig.me)/32 \
+  --target-tags=clickhouse-server
+```
+
+> Delete this rule once setup is done: `gcloud compute firewall-rules delete allow-clickhouse-dev`
+
+---
+
+## Step 9b: Set up ClickHouse user and database
+
+SSH into the VM:
+
+```bash
+gcloud compute ssh opticsops-clickhouse --zone=us-central1-a
+```
+
+Inside the VM, open the ClickHouse client:
+
+```bash
+clickhouse-client
+```
+
+Run these SQL commands:
+
+```sql
+-- Create the OpticsOps database
+CREATE DATABASE IF NOT EXISTS opticsops;
+
+-- Create a dedicated user (replace 'YOUR_STRONG_PASSWORD' with a real password)
+CREATE USER IF NOT EXISTS opticsops_ingest
+  IDENTIFIED WITH sha256_password BY 'YOUR_STRONG_PASSWORD'
+  DEFAULT DATABASE opticsops;
+
+-- Grant access
+GRANT ALL ON opticsops.* TO opticsops_ingest;
+
+-- Verify
+SHOW DATABASES;
+SHOW USERS;
+```
+
+Exit the client: `exit`
+
+Exit the SSH session: `exit`
+
+---
+
+## Step 9c: Store ClickHouse credentials in Secret Manager
+
+```bash
+# Store ClickHouse password as a secret
+echo -n "YOUR_STRONG_PASSWORD" | \
+  gcloud secrets create opticsops-clickhouse-password \
+    --data-file=- \
+    --replication-policy=automatic
+
+# Store the full connection URL
+echo -n "http://opticsops_ingest:YOUR_STRONG_PASSWORD@${CH_INTERNAL_IP}:8123/opticsops" | \
+  gcloud secrets create opticsops-clickhouse-url \
+    --data-file=- \
+    --replication-policy=automatic
+```
+
+Verify:
+
+```bash
+gcloud secrets list
+gcloud secrets versions access latest --secret=opticsops-clickhouse-url
+```
+
+---
+
+## Step 9d: Test ClickHouse from your laptop
+
+Get the VM's external IP:
+
+```bash
+export CH_EXTERNAL_IP=$(gcloud compute instances describe opticsops-clickhouse \
+  --zone=us-central1-a \
+  --format='value(networkInterfaces[0].accessConfigs[0].natIP)')
+
+echo $CH_EXTERNAL_IP
+```
+
+Test the HTTP interface:
+
+```bash
+curl "http://${CH_EXTERNAL_IP}:8123/?user=opticsops_ingest&password=YOUR_STRONG_PASSWORD" \
+  --data "SELECT 'ClickHouse OK' AS status"
+```
+
+Expected output:
+
+```
+ClickHouse OK
+```
+
+Once confirmed, delete the dev firewall rule:
+
+```bash
+gcloud compute firewall-rules delete allow-clickhouse-dev
+```
+
+---
+
+## Step 10: Deploy a test service on Cloud Run
 
 Prove your GCP setup works before building OpticsOps services.
 
@@ -369,7 +571,14 @@ Mark items as you complete them:
 - [ ] Artifact Registry repo `opticsops` created
 - [ ] Test Cloud Run deploy successful (`opticsops-test`)
 - [ ] Billing alerts configured
-- [ ] (Step 2) ClickHouse + ingest API deployed
+- [ ] ClickHouse VM `opticsops-clickhouse` created (e2-standard-2, 50GB SSD)
+- [ ] Firewall rule `allow-clickhouse-internal` created
+- [ ] ClickHouse user `opticsops_ingest` created
+- [ ] Database `opticsops` created
+- [ ] Credentials stored in Secret Manager
+- [ ] ClickHouse HTTP test passed (`SELECT 'ClickHouse OK'`)
+- [ ] Dev firewall rule deleted
+- [ ] (Step 2) Ingest API deployed to Cloud Run
 - [ ] (Step 3) service-a + service-b deployed via Pulumi
 - [ ] (Step 4) Dashboard deployed
 

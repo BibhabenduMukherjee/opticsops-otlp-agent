@@ -6,5 +6,6 @@ coverage/
 .env
 .env.local
 projectplan.txt
+Gaps.md
 
 
