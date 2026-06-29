@@ -32,6 +32,12 @@ export interface OpticsOpsConfig {
    * @default false (true when NODE_ENV=development)
    */
   enableConsoleLogging?: boolean;
+
+  /**
+   * API key for the OpticsOps ingest backend. Sent as the X-Api-Key header
+   * on trace and heartbeat requests.
+   */
+  apiKey?: string;
 }
 
 /** Resolved configuration with all defaults applied. */
@@ -41,6 +47,7 @@ export interface ResolvedConfig {
   latencyThresholdMs: number;
   heartbeatIntervalMs: number;
   enableConsoleLogging: boolean;
+  apiKey: string;
 }
 
 /** A single aggregated service-to-service call edge. */

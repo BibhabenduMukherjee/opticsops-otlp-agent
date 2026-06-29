@@ -13,6 +13,7 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 10_000;
  * - OPTICSOPS_LATENCY_THRESHOLD_MS → latencyThresholdMs
  * - OPTICSOPS_HEARTBEAT_INTERVAL_MS → heartbeatIntervalMs
  * - OPTICSOPS_CONSOLE_LOGGING=true → enableConsoleLogging
+ * - OPTICSOPS_API_KEY → apiKey
  */
 export function resolveConfig(partial: OpticsOpsConfig): ResolvedConfig {
   const serviceName =
@@ -52,5 +53,6 @@ export function resolveConfig(partial: OpticsOpsConfig): ResolvedConfig {
       partial.heartbeatIntervalMs ??
       (Number(process.env.OPTICSOPS_HEARTBEAT_INTERVAL_MS) || DEFAULT_HEARTBEAT_INTERVAL_MS),
     enableConsoleLogging,
+    apiKey: partial.apiKey ?? process.env.OPTICSOPS_API_KEY ?? '',
   };
 }

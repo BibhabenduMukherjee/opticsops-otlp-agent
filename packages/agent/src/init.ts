@@ -52,9 +52,13 @@ export function init(config: OpticsOpsConfig): void {
   const heartbeatUrl = resolved.otlpEndpoint.replace('/v1/traces', '/v1/heartbeat');
   heartbeat = new HeartbeatAggregator(resolved, (edges) => {
     // Use global fetch (Node 18+) — bypasses our http monkey-patch intentionally.
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (resolved.apiKey) {
+      headers['X-Api-Key'] = resolved.apiKey;
+    }
     fetch(heartbeatUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ edges }),
     }).catch(() => {}); // best-effort, never blocks the app
   });

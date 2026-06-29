@@ -15,8 +15,10 @@ import { TailSamplingSpanProcessor } from './tail-sampler.js';
  * by HeartbeatAggregator instead.
  */
 export function createSpanProcessors(config: ResolvedConfig): SpanProcessor[] {
+  const headers = config.apiKey ? { 'X-Api-Key': config.apiKey } : undefined;
   const otlpExporter = new OTLPTraceExporter({
     url: config.otlpEndpoint,
+    headers,
   });
 
   const exporter: SpanExporter = config.enableConsoleLogging
