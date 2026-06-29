@@ -8,6 +8,7 @@ const config: ResolvedConfig = {
   latencyThresholdMs: 500,
   heartbeatIntervalMs: 100,
   enableConsoleLogging: false,
+  apiKey: '',
 };
 
 describe('HeartbeatAggregator', () => {

@@ -11,6 +11,7 @@ const config: ResolvedConfig = {
   latencyThresholdMs: 500,
   heartbeatIntervalMs: 10_000,
   enableConsoleLogging: false,
+  apiKey: '',
 };
 
 /** Matches FLUSH_DEBOUNCE_MS in tail-sampler.ts */

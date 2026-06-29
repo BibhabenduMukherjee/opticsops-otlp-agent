@@ -40,6 +40,7 @@ describe('cross-service trace propagation (integration)', () => {
     latencyThresholdMs: 500,
     heartbeatIntervalMs: 60_000,
     enableConsoleLogging: false,
+    apiKey: '',
   };
 
   beforeEach(async () => {
