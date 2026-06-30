@@ -33,22 +33,40 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "build": "node ../../node_modules/tsup/dist/cli-default.js",
+    "prepublishOnly": "npm run build && node ../../node_modules/vitest/dist/cli.js run",
+    "test": "node ../../node_modules/vitest/dist/cli.js run",
+    "test:watch": "node ../../node_modules/vitest/dist/cli.js",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "keywords": [
     "opentelemetry",
+    "otel",
     "tracing",
     "telemetry",
     "observability",
+    "apm",
     "http",
-    "async-local-storage"
+    "node",
+    "async-local-storage",
+    "w3c-trace-context",
+    "opticsops"
   ],
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BibhabenduMukherjee/opticsops-otlp-agent.git",
+    "directory": "packages/agent"
+  },
+  "homepage": "https://github.com/BibhabenduMukherjee/opticsops-otlp-agent#readme",
+  "bugs": {
+    "url": "https://github.com/BibhabenduMukherjee/opticsops-otlp-agent/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

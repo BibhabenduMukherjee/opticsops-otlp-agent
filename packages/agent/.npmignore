@@ -1,0 +1,19 @@
+# Source — only dist is published
+src/
+test/
+
+# Config files
+tsconfig*.json
+tsup.config.ts
+vitest.config.ts
+
+# Local env and secrets (never publish)
+.env
+.env.*
+*.key
+*.pem
+*.p12
+
+# Dev artifacts
+*.tgz
+node_modules/
