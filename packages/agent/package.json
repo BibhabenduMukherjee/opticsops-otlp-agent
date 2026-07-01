@@ -1,6 +1,6 @@
 {
   "name": "@opticsops/agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Zero-configuration OpenTelemetry agent for Node.js — automatic HTTP tracing with W3C context propagation",
   "type": "module",
   "main": "./dist/index.cjs",
